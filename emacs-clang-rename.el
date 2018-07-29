@@ -2,6 +2,8 @@
 
 ;; Keywords: tools, c, c++, clang, cpp, cxx
 
+;;; Copyright: Nils Deppe 2018
+
 ;;; Commentary:
 
 ;; Requires the json Emacs module in order to read the
