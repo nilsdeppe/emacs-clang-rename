@@ -212,8 +212,8 @@
             (with-current-buffer output-buffer (insert output-message))
             (display-buffer output-buffer)))))))
 
-(defun emacs-clang-rename-qualified-name-all (qualified-name new-name)
-  "Print command to rename all instances of QUALIFIED-NAME in project to NEW-NAME."
+(defun emacs-clang-rename-qualified-name-print (qualified-name new-name)
+  "Print command to rename instances of QUALIFIED-NAME to NEW-NAME."
   (interactive "sEnter qualified name to rename: \nsEnter a new name: ")
   (save-some-buffers :all)
   ;; clang-rename should not be combined with other operations when undoing.
@@ -241,11 +241,9 @@
                   (concat output-string
                           (format "-qualified-name=%s -new-name=%s -i "
                                   qualified-name new-name)))
-            ;; Append each source file to the list to transform
-            (dolist (source-file
-                     (emacs-clang-rename--get-files-list compile-commands-file))
-              (setq output-string
-                    (concat output-string (format "%s " source-file))))
+            (setq output-string
+                  (concat output-string
+                          (format "source0 [source1...]")))
 
             (with-current-buffer output-buffer (goto-char (point-max)))
             (with-current-buffer output-buffer
