@@ -44,13 +44,6 @@
   :group 'emacs-clang-rename)
 
 
-(defcustom emacs-clang-rename-extensions
-  '("cpp" "cc" "cxx" "c" "m" "mm" "C" "CPP" "c++")
-  "List of extensions of files to perform rename on."
-  :type 'alist
-  :group 'emacs-clang-rename-extensions)
-
-
 (defcustom emacs-clang-rename-temp-buffer-name "*emacs-clang-rename*"
   "The name of the temporary buffer output will be printed to."
   :type 'string
@@ -68,6 +61,16 @@
     (setq start-dir "NotFound")))
 
 
+;; Current emacs-clang-rename-extensions has no effect
+(defcustom emacs-clang-rename-extensions
+  '("cpp" "cc" "cxx" "c" "m" "mm" "C" "CPP" "c++")
+  "List of extensions of files to perform rename on."
+  :type 'alist
+  :group 'emacs-clang-rename-extensions)
+
+
+;; Function is kept around to be used if/when clang-rename
+;; supports multiple TUs properly.
 (defun emacs-clang-rename--get-files-list (compile-commands-file)
   "Gets the list of C++ and C files from the COMPILE-COMMANDS-FILE."
   (setq json-array-type 'list)
