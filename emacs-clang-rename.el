@@ -70,6 +70,9 @@
 
 (defun emacs-clang-rename--get-files-list (compile-commands-file)
   "Gets the list of C++ and C files from the COMPILE-COMMANDS-FILE."
+  (setq json-array-type 'list)
+  (setq json-key-type 'string)
+  (setq json-object-type 'alist)
   (let ((compile-commands
          (json-read-file compile-commands-file)))
     (let ((file-list '()))
@@ -123,7 +126,7 @@
                                 "-offset=%d"
                                 ;; clang-rename wants file (byte) offsets, not
                                 ;; buffer (character) positions.
-                                (clang-rename--bufferpos-to-filepos
+                                (emacs-clang-rename--bufferpos-to-filepos
                                  ;; Emacs treats one character after a symbol
                                  ;; as part of the symbol, but clang-rename
                                  ;; doesn’t. Use the beginning of the current
@@ -142,7 +145,7 @@
                               "-offset=%d"
                               ;; clang-rename wants file (byte) offsets, not
                               ;; buffer (character) positions.
-                              (clang-rename--bufferpos-to-filepos
+                              (emacs-clang-rename--bufferpos-to-filepos
                                ;; Emacs treats one character after a symbol as
                                ;; part of the symbol, but clang-rename doesn’t.
                                ;; Use the beginning of the current symbol, if
