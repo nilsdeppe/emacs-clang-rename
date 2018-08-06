@@ -47,18 +47,30 @@
 (defcustom emacs-clang-rename-temp-buffer-name "*emacs-clang-rename*"
   "The name of the temporary buffer output will be printed to."
   :type 'string
-  :group 'emacs-clang-rename-extensions)
+  :group 'emacs-clang-rename)
+
+
+(defcustom emacs-clang-rename-compile-commands-file nil
+  "Path to the compile_commands.json file.  If nil auto-detected."
+  :type 'string
+  :group 'emacs-clang-rename)
 
 
 (defun emacs-clang-rename--find-compile-commands (start-dir)
   "Search from START-DIR to '/' for a compile_commands.json file."
-  (while
-      (and (not (equal "/" start-dir))
-           (not (file-exists-p (concat start-dir "compile_commands.json"))))
-    (setq start-dir (file-name-directory(substring start-dir 0 -1))))
-  (if (file-exists-p (concat start-dir "compile_commands.json"))
-      (setq start-dir (concat start-dir "compile_commands.json"))
-    (setq start-dir "NotFound")))
+  ;; emacs-clang-rename-compile-commands-file is nil if not set,
+  ;; which is not a string so file-exists-p would throw an error.
+  (if (and emacs-clang-rename-compile-commands-file
+           (file-exists-p emacs-clang-rename-compile-commands-file))
+      (setq start-dir emacs-clang-rename-compile-commands-file)
+    (progn
+      (while
+          (and (not (equal "/" start-dir))
+               (not (file-exists-p (concat start-dir "compile_commands.json"))))
+        (setq start-dir (file-name-directory(substring start-dir 0 -1))))
+      (if (file-exists-p (concat start-dir "compile_commands.json"))
+          (setq start-dir (concat start-dir "compile_commands.json"))
+        (setq start-dir "NotFound")))))
 
 
 ;; Current emacs-clang-rename-extensions has no effect
@@ -66,7 +78,7 @@
   '("cpp" "cc" "cxx" "c" "m" "mm" "C" "CPP" "c++")
   "List of extensions of files to perform rename on."
   :type 'alist
-  :group 'emacs-clang-rename-extensions)
+  :group 'emacs-clang-rename)
 
 
 ;; Function is kept around to be used if/when clang-rename
@@ -79,7 +91,6 @@
   (let ((compile-commands
          (json-read-file compile-commands-file)))
     (let ((file-list '()))
-      (message "before: %s" file-list)
       (dolist (command compile-commands)
         ;; Convert the list into a hash table so we can have to assume order
         ;; of them in the JSON file, since that's not guaranteed
@@ -91,14 +102,37 @@
               (member
                (file-name-extension
                 (gethash "file" command-hash)) emacs-clang-rename-extensions)
-            (if (file-exists-p (concat "/" (gethash "file" command-hash)))
-                (add-to-list 'file-list (gethash "file" command-hash))
-              (add-to-list 'file-list
-                           (expand-file-name
-                            (concat (gethash "directory" command-hash) "/"
-                                    (gethash "file" command-hash))))))))
+            (add-to-list
+             'file-list (expand-file-name
+                         (gethash "file" command-hash)
+                         (gethash "directory" command-hash))))))
       ;; The compile_commands.json file can have the same file multiple times
       (delete-dups file-list))))
+
+(defun emacs-clang-rename--get-build-dir-of (file-name compile-commands-file)
+  "Gets the build directory of FILE-NAME from the COMPILE-COMMANDS-FILE."
+  (setq json-array-type 'list)
+  (setq json-key-type 'string)
+  (setq json-object-type 'alist)
+  (if (not (equal compile-commands-file "NotFound"))
+      (let ((compile-commands
+             (json-read-file compile-commands-file)))
+        (let ((result-dir "nil"))
+          (dolist (command compile-commands)
+            ;; Convert the list into a hash table so we can have to assume order
+            ;; of them in the JSON file, since that's not guaranteed
+            (let ((command-hash (make-hash-table :test 'equal)))
+              (dolist (element command)
+                (puthash (car element) (cdr element) command-hash))
+              ;; add C/C++ files to list, make sure the file paths are absolute
+              (when (equal file-name (expand-file-name
+                                      (gethash "file" command-hash)
+                                      (gethash "directory" command-hash)))
+                (setq result-dir (gethash "directory" command-hash)))))
+          (if (equal result-dir "nil")
+              (file-name-directory file-name)
+            result-dir)))
+    (file-name-directory file-name)))
 
 
 (defalias 'emacs-clang-rename--bufferpos-to-filepos
@@ -110,69 +144,66 @@
       (1- (position-bytes position)))))
 
 
-(defun emacs-clang-rename-at-point (new-name)
-  "Rename all instances of the symbol at point in the file to NEW-NAME."
-  (interactive "sEnter a new name: ")
-  (save-some-buffers :all)
-  ;; clang-rename should not be combined with other operations when undoing.
-  (undo-boundary)
+(defun emacs-clang-rename--execute-rename (new-name old-name-or-offset)
+  "Rename all instances of OLD-NAME-OR-OFFSET (expected to be a string \
+of the form '-qualified-name=blah' or '-offset=1234') to NEW-NAME."
   (let ((output-buffer (get-buffer-create emacs-clang-rename-temp-buffer-name)))
     (with-current-buffer output-buffer (goto-char (point-max)))
     (with-current-buffer output-buffer (insert "\nRunning clang-rename:\n"))
     (let ((compile-commands-file (emacs-clang-rename--find-compile-commands
                                   (file-name-directory buffer-file-name))))
       (let ((exit-code
-             (if (not (equal compile-commands-file "NotFound"))
-                 (call-process emacs-clang-rename-binary nil
-                               output-buffer nil
-                               (format
-                                "-offset=%d"
-                                ;; clang-rename wants file (byte) offsets, not
-                                ;; buffer (character) positions.
-                                (emacs-clang-rename--bufferpos-to-filepos
-                                 ;; Emacs treats one character after a symbol
-                                 ;; as part of the symbol, but clang-rename
-                                 ;; doesn’t. Use the beginning of the current
-                                 ;; symbol, if available, to resolve the
-                                 ;; inconsistency.
-                                 (or (car (bounds-of-thing-at-point 'symbol))
-                                     (point))
-                                 'exact))
-                               (format "-new-name=%s" new-name)
-                               (format "-p=%s" compile-commands-file)
-                               "-i"
-                               (buffer-file-name))
-               (call-process emacs-clang-rename-binary nil
-                             output-buffer nil
-                             (format
-                              "-offset=%d"
-                              ;; clang-rename wants file (byte) offsets, not
-                              ;; buffer (character) positions.
-                              (emacs-clang-rename--bufferpos-to-filepos
-                               ;; Emacs treats one character after a symbol as
-                               ;; part of the symbol, but clang-rename doesn’t.
-                               ;; Use the beginning of the current symbol, if
-                               ;; available, to resolve the inconsistency.
-                               (or (car (bounds-of-thing-at-point 'symbol))
-                                   (point))
-                               'exact))
-                             (format "-new-name=%s" new-name)
-                             "-i"
-                             (buffer-file-name)))))
+             (let ((cmd
+                    (format "cd %s && %s %s -new-name=%s %s -i %s"
+                            (emacs-clang-rename--get-build-dir-of
+                             buffer-file-name compile-commands-file)
+                            emacs-clang-rename-binary
+                            old-name-or-offset
+                            new-name
+                            (if (not (equal compile-commands-file "NotFound"))
+                                (format "-p=%s" compile-commands-file)
+                              (format ""))
+                            buffer-file-name
+                            )))
+               (call-process-shell-command cmd nil
+                                           output-buffer nil))))
         (if (and (integerp exit-code) (zerop exit-code))
             ;; successfully ran clang-rename:
             (progn
               ;; (kill-buffer output-buffer)
               (revert-buffer :ignore-auto :noconfirm :preserve-modes))
           ;; Failed running clang-rename:
-          (let ((message (format "clang-rename failed with %s %s\n"
+          (let ((out-msg (format "clang-rename failed with %s %s\n"
                                  (if (integerp exit-code)
                                      "exit status"
                                    "signal")
                                  exit-code)))
             (with-current-buffer output-buffer (goto-char (point-max)))
-            (with-current-buffer output-buffer (insert ?\n  message ?\n))
+            (with-current-buffer output-buffer (insert ?\n  out-msg ?\n))
             (display-buffer output-buffer)))))))
+
+
+(defun emacs-clang-rename-at-point (new-name)
+  "Rename all instances of the symbol at point in the file to NEW-NAME."
+  (interactive "sEnter a new name: ")
+  (save-some-buffers :all)
+  ;; clang-rename should not be combined with other operations when undoing.
+  (undo-boundary)
+  (emacs-clang-rename--execute-rename
+   new-name
+   (format
+    "-offset=%d"
+    ;; clang-rename wants file (byte) offsets, not
+    ;; buffer (character) positions.
+    (emacs-clang-rename--bufferpos-to-filepos
+     ;; Emacs treats one character after a symbol
+     ;; as part of the symbol, but clang-rename
+     ;; doesn’t. Use the beginning of the current
+     ;; symbol, if available, to resolve the
+     ;; inconsistency.
+     (or (car (bounds-of-thing-at-point 'symbol))
+         (point))
+     'exact))))
 
 
 (defun emacs-clang-rename-qualified-name (qualified-name new-name)
@@ -181,39 +212,9 @@
   (save-some-buffers :all)
   ;; clang-rename should not be combined with other operations when undoing.
   (undo-boundary)
-  (let ((output-buffer (get-buffer-create emacs-clang-rename-temp-buffer-name)))
-    (with-current-buffer output-buffer (goto-char (point-max)))
-    (with-current-buffer output-buffer (insert "\nRunning clang-rename:\n"))
-    (let ((compile-commands-file (emacs-clang-rename--find-compile-commands
-                                  (file-name-directory buffer-file-name))))
-      (let ((exit-code
-             (if (not (equal compile-commands-file "NotFound"))
-                 (call-process emacs-clang-rename-binary nil
-                               output-buffer nil
-                               (format "-qualified-name=%s" qualified-name)
-                               (format "-new-name=%s" new-name)
-                               "-i"
-                               (buffer-file-name))
-               (call-process emacs-clang-rename-binary nil
-                             output-buffer nil
-                             (format "-p=%s" compile-commands-file)
-                             (format "-qualified-name=%s" qualified-name)
-                             (format "-new-name=%s" new-name)
-                             "-i"
-                             (buffer-file-name)))))
-        (if (and (integerp exit-code) (zerop exit-code))
-            ;; successfully ran clang-rename:
-            (progn
-              (revert-buffer :ignore-auto :noconfirm :preserve-modes))
-          ;; Failed running clang-rename:
-          (let ((output-message
-                 (format "clang-rename failed with %s %s\n"
-                         (if (integerp exit-code) "exit status"
-                           "signal")
-                         exit-code)))
-            (with-current-buffer output-buffer (goto-char (point-max)))
-            (with-current-buffer output-buffer (insert output-message))
-            (display-buffer output-buffer)))))))
+  (emacs-clang-rename--execute-rename
+   new-name
+   (format "-qualified-name=%s" qualified-name)))
 
 (defun emacs-clang-rename-qualified-name-print (qualified-name new-name)
   "Print command to rename instances of QUALIFIED-NAME to NEW-NAME."
