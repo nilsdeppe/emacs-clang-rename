@@ -60,17 +60,17 @@
   "Search from START-DIR to '/' for a compile_commands.json file."
   ;; emacs-clang-rename-compile-commands-file is nil if not set,
   ;; which is not a string so file-exists-p would throw an error.
-  (if (and emacs-clang-rename-compile-commands-file
-           (file-exists-p emacs-clang-rename-compile-commands-file))
-      (setq start-dir emacs-clang-rename-compile-commands-file)
-    (progn
-      (while
-          (and (not (equal "/" start-dir))
-               (not (file-exists-p (concat start-dir "compile_commands.json"))))
-        (setq start-dir (file-name-directory(substring start-dir 0 -1))))
-      (if (file-exists-p (concat start-dir "compile_commands.json"))
-          (setq start-dir (concat start-dir "compile_commands.json"))
-        (setq start-dir "NotFound")))))
+  (if emacs-clang-rename-compile-commands-file
+      (if (file-exists-p emacs-clang-rename-compile-commands-file)
+          (setq start-dir emacs-clang-rename-compile-commands-file))
+    (progn (while
+               (and (not (equal "/" start-dir))
+                    (not (file-exists-p (concat start-dir "compile_commands.json"))))
+             (setq start-dir (file-name-directory(substring start-dir 0 -1))))
+           (if (file-exists-p (concat start-dir "compile_commands.json"))
+               (setq start-dir (concat start-dir "compile_commands.json"))
+             (setq start-dir "NotFound"))))
+  )
 
 
 ;; Current emacs-clang-rename-extensions has no effect
