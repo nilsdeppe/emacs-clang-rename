@@ -60,7 +60,7 @@ following in the `.dir-locals.el`:
          . "/path/to/compile_commands.json")))
 ```
 
-## Why not the bundled `clang-rename.el`?
+## Why not the `clang-rename.el` bundled with LLVM?
 
 The extension bundled with LLVM was used as inspiration for this
 extension. However, it does not find compile commands when calling clang-rename
