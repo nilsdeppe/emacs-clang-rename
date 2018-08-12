@@ -18,7 +18,7 @@
 ## Installation
 
 If you're using `use-package` you can add the following to your Emacs init file:
-```
+```elisp
 (if (not (file-directory-p "~/.emacs.d/plugins/"))
     (make-directory "~/.emacs.d/plugins/"))
 (if (not (file-exists-p "~/.emacs.d/plugins/emacs-clang-rename.el"))
@@ -34,7 +34,7 @@ If you're using `use-package` you can add the following to your Emacs init file:
 
 If you're not using `use-package` you can add the following to your Emacs init
 file:
-```
+```elisp
 (if (not (file-directory-p "~/.emacs.d/plugins/"))
     (make-directory "~/.emacs.d/plugins/"))
 (if (not (file-exists-p "~/.emacs.d/plugins/emacs-clang-rename.el"))
@@ -55,9 +55,8 @@ To specify the buffer name where the diagnostics are printed set the variable
 
 To specify the location of the compile commands file you can specify the
 following in the `.dir-locals.el`:
-```
-(nil . ((emacs-clang-rename-compile-commands-file
-         . "/path/to/compile_commands.json")))
+```elisp
+(nil . ((emacs-clang-rename-compile-commands-file . "/path/to/compile_commands.json")))
 ```
 
 ## Why not the `clang-rename.el` bundled with LLVM?
